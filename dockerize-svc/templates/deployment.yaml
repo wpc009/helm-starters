@@ -1,0 +1,73 @@
+apiVersion: apps/v1beta2
+kind: Deployment
+metadata:
+  name: {{ include "__CHART__.fullname" . }}
+  labels:
+    app: {{ include "__CHART__.name" . }}
+    chart: {{ include "__CHART__.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "__CHART__.name" . }}
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "__CHART__.name" . }}
+        release: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+        {{- if .Values.ports }}
+          ports:
+          {{- range $p := .Values.ports }}
+            - {{ toYaml $p }}
+          {{- end }}
+        {{- end }}
+        {{- if .Values.args }}
+          args:
+            {{- range $dep := .Values.dependencies }} 
+            - "-wait" 
+              {{- if $dep.tcpSocket }}
+            - "tcp://{{ $dep.tcpSocket.host }}:{{ $dep.tcpSocket.port}}"
+              {{- else if $dep.httpGet }}
+            - "http://{{ $dep.httpGet.host }}:{{ $dep.httpGet.port}}/${{ $dep.httpGet.path }}"
+              {{- end }}  
+            {{- end }}
+            - "-timeout"
+            - "{{ .Values.dockerize.timeout }}"
+            {{- range $arg := .Values.args }}
+            - {{ $arg }}
+            {{- end }} 
+        {{- end }}
+        {{- if .Values.livenessProbe }}
+          livenessProbe:
+          {{- range $probe := .Values.livenessProbe }}
+            - {{ toYaml $probe }}
+          {{- end }}
+        {{- end }}
+        {{- if .Values.readinessProbe }}
+          readinessProbe:
+          {{- range $probe := .Values.readinessProbe }}
+            - {{ toYaml $probe }}
+          {{- end }}
+        {{- end }}
+          resources:
+{{ toYaml .Values.resources | indent 12 }}
+    {{- with .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+    {{- end }}
