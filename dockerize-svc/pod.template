@@ -1,0 +1,156 @@
+{{ $global := . }}
+metadata:
+  labels:
+    app: {{ include "name" $global }}
+    release: {{ .Release.Name }}
+spec:
+{{- if .Values.image.pullSecrets }}
+  imagePullSecrets:
+  {{- range .Values.image.pullSecrets }}
+    - name: {{ . }}
+  {{- end}}  
+{{- end }}
+{{- if or .Values.init .Values.dependencies  }} ## start of init
+  initContainers:
+  {{- if .Values.init }}
+  {{- range $i,$obj := .Values.init }}
+    - name: {{ printf "%s-%d" (include "fullname" $global ) (int $i) }}
+      image: "{{- if $obj.image.registry -}}{{ $obj.image.registry }}/{{- end -}}{{ $obj.image.repository }}:{{ $obj.image.tag }}"
+    {{- if $obj.image.pullPolicy }}
+      imagePullPolicy: {{default "IfNotPresent" $obj.image.pullPolicy }}
+    {{- end }}
+      env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+    {{- if $obj.env  }}        
+        {{- toYaml $obj.env | trimSuffix "\n" | nindent 8}}
+    {{- end }}
+    {{- if $obj.command }}
+      command: {{- toYaml $obj.command | trimSuffix "\n" | nindent 8}}
+    {{- end }}
+    {{- if $obj.volumeMounts }}
+      volumeMounts:
+      {{- toYaml $obj.volumeMounts | trimSuffix "\n" | nindent 8}}
+    {{- end }}
+  {{- end }} # end of range .Values.init
+  {{- end }}
+  {{- if .Values.dependencies }}
+    - name: {{ printf "%s-dockerize" (include "fullname" $global)}}
+      image: jwilder/dockerize:{{default "latest" .Values.dockerize.tag }}
+      args:
+        {{- range $depName,$dep := .Values.dependencies }} 
+        - "-wait" 
+        {{- if $dep.service }}
+          {{- $targetHost := include "dependencyName" (tuple $dep.service $global)}}
+          {{- $targetPort := include "dependencyPort" (tuple $dep.service $global)}}
+        - {{ printf "%s://%s:%d" (default "tcp" $dep.service.type)  $targetHost  (int $targetPort) }}
+            {{- if eq $dep.service.type "http" }}
+              {{- printf "/%s" $dep.service.uri }}
+            {{- end }}
+        {{- else if $dep.tcp }}
+        - "tcp://{{ $dep.tcp.host }}:{{ $dep.tcp.port }}"
+        {{- else if $dep.http }}
+        - "http://{{ $dep.http.host }}:{{ $dep.http.port }}{{ default "/" $dep.http.uri }}"
+        {{- end }}
+        {{- end }}
+        - "-timeout"
+        - "{{ .Values.dockerize.timeout }}"
+  {{- end }}
+{{- end }} # end line init
+  containers:
+    - name: {{ .Chart.Name }}
+      image: "{{- if .Values.image.registry -}}{{ .Values.image.registry }}/{{- end -}}{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+      imagePullPolicy: {{ .Values.image.pullPolicy }}
+    {{- if and .Values.services  }}
+      ports:
+      {{- range $svcName,$svc := .Values.services }}
+      {{- range $portName,$port := $svc.ports }}
+        - name: {{ $svcName }}-{{ $portName }}
+          containerPort: {{ default ($port.port) $port.targetPort }}
+          protocol: {{default "TCP" $port.protocol }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
+      env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+    {{- if (.Values.env)  }}        
+        {{- toYaml .Values.env | trimSuffix "\n" | nindent 8}}
+    {{- end }}
+    {{- if .Values.command }}
+      command: {{ .Values.command }}
+    {{- end }}
+    {{- if .Values.args }}    
+      args:
+        {{- range $arg := .Values.args }}
+        - {{ $arg }}
+        {{- end }} 
+    {{- end }}
+      volumeMounts:
+    {{- if .Values.configs }}
+      {{- range $config := .Values.configs }}            
+        {{- range $volume := $config.volumes }}
+        - name: {{ $volume.name }}
+          mountPath: {{ $volume.mountPath }}
+          {{- if $volume.subPath }}
+          subPath: {{ $volume.subPath }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+    {{- end }} #end if .Values.configs
+    {{- if .Values.volumeMounts }}
+      {{- toYaml .Values.volumeMounts | trimSuffix "\n" | nindent 8 }}
+    {{- end }}
+    {{- if .Values.livenessProbe }}
+      livenessProbe:
+        {{- toYaml .Values.livenessProbe | trimSuffix "\n" | nindent 8 }}
+    {{- end }}
+    {{- if .Values.readinessProbe }}
+      readinessProbe:
+      {{- toYaml .Values.readinessProbe | trimSuffix "\n" | nindent 8 }}
+    {{- end }}
+    {{- if .Values.resources }}
+      resources:
+        {{- toYaml .Values.resources | trimSuffix "\n" | nindent 8 }}
+    {{- end }}
+  volumes:
+{{- if .Values.configs }}
+  {{- range $config := .Values.configs }} 
+    {{- range $volume := $config.volumes }}
+    - name: {{ $volume.name }}
+      configMap:
+        name: {{ $config.name }}
+      {{- if $volume.items }}
+        items:
+          {{- toYaml $volume.items | trimSuffix "\n" | nindent 10 }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{- if .Values.volumes }}
+  {{- toYaml .Values.volumes | trimSuffix "\n" | nindent 4}}
+{{- end }}
+{{- with .Values.nodeSelector }}
+  nodeSelector:
+  {{- toYaml . | trimSuffix "\n" | nindent 4 }}
+{{- end }}
+{{- with .Values.affinity }}
+  affinity:
+  {{-  toYaml . | trimSuffix "\n" | nindent 4 }}
+{{- end }}
+{{- with .Values.tolerations }}
+  tolerations:
+  {{-  toYaml . | trimSuffix "\n" |  nindent 4 }}
+{{- end }}

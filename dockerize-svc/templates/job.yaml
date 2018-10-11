@@ -1,7 +1,7 @@
-{{- if eq .Values.type "deployment"}}
+{{- if eq .Values.type "job" }}
 {{- $global := . }}
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: batch/v1
+kind: Job
 metadata:
   name: {{ include "fullname" $global }}
   labels:
@@ -10,11 +10,10 @@ metadata:
     release: {{ .Release.Name }}
     heritage: {{ .Release.Service }}
 spec:
-  replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
       app: {{ include "name" $global }}
       release: {{ .Release.Name }}
   template:
-    {{- tpl (.Files.Get "pod.template" ) $global  | indent 4}}
+  {{- tpl (.Files.Get "pod.template" ) $global  | indent 4}}
 {{- end }}

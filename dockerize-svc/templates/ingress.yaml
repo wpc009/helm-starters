@@ -1,13 +1,13 @@
 {{- if .Values.ingress.enabled -}}
-{{- $fullName := include "__CHART__.fullname" . -}}
+{{- $global := . }}
 {{- $ingressPath := .Values.ingress.path -}}
 apiVersion: extensions/v1beta1
 kind: Ingress
 metadata:
-  name: {{ $fullName }}
+  name: {{ include "fullname" $global }}
   labels:
-    app: {{ include "__CHART__.name" . }}
-    chart: {{ include "__CHART__.chart" . }}
+    app: {{ include "name" $global }}
+    chart: {{ include "chart" $global }}
     release: {{ .Release.Name }}
     heritage: {{ .Release.Service }}
 {{- with .Values.ingress.annotations }}
@@ -32,7 +32,7 @@ spec:
         paths:
           - path: {{ $ingressPath }}
             backend:
-              serviceName: {{ $fullName }}
+              serviceName: {{ include "fullName" $global }}
               servicePort: http
   {{- end }}
 {{- end }}

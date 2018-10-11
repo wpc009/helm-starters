@@ -15,28 +15,10 @@ image:
 nameOverride: ""
 fullnameOverride: ""
 
-
-init: []
-# init containers
-  # - image:
-  #     repository: 
-  #     registry:
-  #     tag:
-  #     pullPolicy:
-  #   env:
-  #     - name: SOME_ENV
-  #       value: SOME_VALUE
-  #   command: [""]
-  #   args: [""]
-  #   volumeMounts: 
-  #     - name: <VOLUME_NAME>
-  #       mountPath: <MOUNT_PATH>
-
 services: {}
-  # <service_name>:
-  #   type: <ClusterIP|NodePort|LoadBalancer>
+  #   type: <ClusterIP|NodePort>
   #   ports:
-  #     name:
+  #     - name
   #       nodePort: <port_on_node> # only used when type is NodePort and LoadBalancer
   #       port: <exposed_port_number>
   #       targetPort: <number_or_name> 
@@ -71,7 +53,6 @@ resources: {}
   #  memory: 128Mi
 
 dockerize:
-  tag: latest
   timeout: 60s
 # dockerize default timeout
 
@@ -86,45 +67,25 @@ configs: []
   #     
   #
 
+
 args: []
 # command for container, string array
 
 dependencies: {}
 # Probe v1 core,  only support tcpSocket and httpGet
 # reference https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.11/#probe-v1-core
-  # <name>:
+  # <dep_name>:
+  #   tcp:
+  #     host: <host>
+  #     port: <port>
+  #   http:
+  #     host: <host>
+  #     port: <port>
+  #     path: <http path>
   #   service:
-  #     target: <target service archor>
-  #     name: <target service name>
-  #     type: <http or tcp>
-  #     port: <target port name under service>
-  #     uri: <uri path , only valid for http>
-      
-  # <name>:
-  #     tcp:
-  #       host: <host>
-  #       port: <port>
-  # <name>:
-  #     http:
-  #       host: <host>
-  #       port: <port>
-  #       path: <http path>
-
-type: deployment
-#  deployment
-#  statefulset
-#  replicaset
-#  daemonset
-
-volumeMounts: []
-    # - name : <VOLUME_NAME>
-    #   mountPath: <MOUNT_PATH_IN_CONTAINER>
-    #   subPath: <PATH_IN_VOLUME>
-
-volumes: []
-  #  refrence https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.12/#volume-v1-core
-
+  #     target:
   
+
 livenessProbe: {}
 # reference https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.11/#probe-v1-core
   # - tcpSocket:
@@ -159,13 +120,78 @@ extra: {}
   # env: <env>
   # envFrom:
 
-##
-## CronJob
-##
-cronjob:
-  schedule: "0 * * * *"
-##
-## StatefulSet
-##
+init:
+  - image:
+      registry: *registry
+      repository: jwilder/dockerize
+      tag: latest
+    command: ["/bin/sh","-c","some args"]
+  
+image:
+  registry: &registry d.artifactory.segmetics.com
+  repository: roc-server-application
+  tag: v0.3.1-RC2
+  pullSecrets: 
+    - *registry
+configs:
+  - name: roc-sa-config
+    mountPath: /config
+    items:
+      - key: roc-config.conf
+        path: app.conf
+  - name: sample-config
+    mountPath: /sample
+    items:
+      - key: some.conf
+        path: target.conf
+configs:
+  - name: some-config2
+    mountPath: /sample2
+    items:
+      - key: some2.conf
+        path: target2.conf
+services:
+  external:
+    type: LoadBalancer
+    ports:
+      mockingbird:
+        port: 34566
+        protocol: TCP
+  internal:
+    type: ClusterIP
+    ports:
+      restapi:
+        port: 3555
+        targetPort: 35555
+      
+args: ["/app","${POD_NAME}-roc-sa","/config/app.conf"]
 
-serviceName: ""
+env:
+  - name: POD_IP2
+    valueFrom:
+      fieldRef:
+        fieldPath: status.podIP
+
+dependencies:
+  rabbitmq:
+    tcp:
+      host: rabbitmq-host
+      port: rabbitmq-port
+  redis:
+    http:
+      host: redis-host
+      port: redis-port
+      uri: /healthz
+
+
+volumeMounts:
+  - name: SOME_VOLUME
+    mountPath: /mount/path
+
+volumes:
+  - name: SOME_VOLUME
+    emptyDir: {}
+  - name: SOME_PVC
+    persistentVolumeClaim:
+      claimName: PVC_NAME
+      readOnly: true
